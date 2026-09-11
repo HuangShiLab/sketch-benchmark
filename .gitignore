@@ -1,0 +1,25 @@
+# Large trees never enter git. Tidy tables under data/ and figures/ do.
+refs/*
+!refs/.gitkeep
+!refs/manifest.tsv
+!refs/hmp_samples.tsv
+idx/*
+!idx/.gitkeep
+runs/*
+!runs/.gitkeep
+data/sim/
+data/real/
+data/**/*.fq.gz
+data/**/*.fastq.gz
+data/**/*.fa.gz
+data/**/*.fna.gz
+logs/*.out
+!logs/.gitkeep
+logs/*.err
+logs/jobs.tsv
+logs/.run_all.lock
+minimal_env/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

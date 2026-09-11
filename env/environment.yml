@@ -1,0 +1,49 @@
+# conda env create -f env/environment.yml
+# Pin exact builds with `conda env export --no-builds > env/environment.lock.yml`
+# once stage 00 has run; the lock file is what the paper cites.
+name: sketch-benchmark
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - pyyaml
+  # F1 fixed-size
+  - mash>=2.3
+  - bindash
+  # F2 scaled
+  - sourmash>=4.8
+  - sylph>=0.8
+  # F3 weighted
+  - hulk
+  # count-based reference (T3)
+  - simka
+  # ANI references (T1)
+  - skani
+  - fastani
+  - mummer4
+  # F6 / alignment (T4, T2 baselines)
+  - deacon
+  - kraken2>=2.1
+  - bracken
+  - bowtie2
+  - minimap2
+  - samtools
+  - hostile
+  # simulation and utilities
+  - insilicoseq
+  - seqkit
+  - taxonkit
+  - sra-tools
+  - pigz
+  - pip
+  - pip:
+      - yacht
+      - sourmash_plugin_branchwater
+# Not on conda — built by env/cargo-tools.sh or fetched from GitHub in stage 00:
+#   dashing2 (static binary), gsearch (cargo), deacon-syncmer fork (cargo),
+#   MaxGeomHash, HyperGen, CMash, RabbitSketch (research code; W1 time-boxed).

@@ -1,0 +1,800 @@
+diff --git a/deacon-wasm/src/lib.rs b/deacon-wasm/src/lib.rs
+index 31ca209..78f15ce 100644
+--- a/deacon-wasm/src/lib.rs
++++ b/deacon-wasm/src/lib.rs
+@@ -112,6 +112,7 @@ impl FilterSession {
+             kernel: FilterKernel::new(
+                 k,
+                 w,
++                index.inner.header.scheme(),
+                 FilterParams {
+                     deplete,
+                     abs_threshold,
+@@ -332,6 +333,7 @@ impl PairedFilterSession {
+             kernel: FilterKernel::new(
+                 k,
+                 w,
++                index.inner.header.scheme(),
+                 FilterParams {
+                     deplete,
+                     abs_threshold,
+diff --git a/src/filter.rs b/src/filter.rs
+index d4af53d..693f4c8 100644
+--- a/src/filter.rs
++++ b/src/filter.rs
+@@ -971,6 +971,7 @@ impl FilterProcessor {
+         minimizers: Arc<MinimizerSet>,
+         kmer_length: u8,
+         window_size: u8,
++        scheme: crate::Scheme,
+         config: &FilterProcessorConfig,
+         output: Output,
+         spinner: Option<Arc<Mutex<ProgressBar>>>,
+@@ -986,6 +987,7 @@ impl FilterProcessor {
+             kernel: FilterKernel::new(
+                 kmer_length,
+                 window_size,
++                scheme,
+                 FilterParams {
+                     deplete: config.deplete,
+                     abs_threshold: config.abs_threshold,
+@@ -1352,6 +1354,7 @@ pub fn run_with_index(
+ 
+     let kmer_length = header.kmer_length();
+     let window_size = header.window_size();
++    let scheme = header.scheme();
+ 
+     let total_threads = if config.threads == 0 {
+         std::thread::available_parallelism()
+@@ -1543,6 +1546,7 @@ pub fn run_with_index(
+         minimizers,
+         kmer_length,
+         window_size,
++        scheme,
+         &processor_config,
+         output,
+         spinner.clone(),
+diff --git a/src/filter_kernel.rs b/src/filter_kernel.rs
+index ef2e092..4f460f6 100644
+--- a/src/filter_kernel.rs
++++ b/src/filter_kernel.rs
+@@ -1,4 +1,4 @@
+-use crate::minimizers::{Buffers, KmerHasher, decode_u64, decode_u128, fill_minimizers_unchecked};
++use crate::minimizers::{Buffers, KmerHasher, Scheme, decode_u64, decode_u128, fill_selected_unchecked};
+ use crate::{MinimizerSet, MinimizerVec, RapidHashSet, validate_unit_interval};
+ 
+ #[derive(Clone, Copy, Debug)]
+@@ -52,19 +52,26 @@ pub struct FilterKernel {
+     params: FilterParams,
+     kmer_length: u8,
+     window_size: u8,
++    scheme: Scheme,
+     hasher: KmerHasher,
+     buffers: Buffers,
+     seen_hits: SeenHits,
+ }
+ 
+ impl FilterKernel {
+-    pub fn new(kmer_length: u8, window_size: u8, params: FilterParams) -> anyhow::Result<Self> {
++    pub fn new(
++        kmer_length: u8,
++        window_size: u8,
++        scheme: Scheme,
++        params: FilterParams,
++    ) -> anyhow::Result<Self> {
+         validate_unit_interval("relative threshold", params.rel_threshold)?;
+         Ok(Self {
+             params,
+             kmer_length,
+             window_size,
+-            hasher: KmerHasher::new(kmer_length as usize),
++            scheme,
++            hasher: KmerHasher::new(scheme.hash_len(kmer_length, window_size)),
+             buffers: if kmer_length <= 32 {
+                 Buffers::new_u64()
+             } else {
+@@ -144,11 +151,12 @@ impl FilterKernel {
+             if seq.len() < self.kmer_length as usize {
+                 continue;
+             }
+-            fill_minimizers_unchecked(
++            fill_selected_unchecked(
+                 seq,
+                 &self.hasher,
+                 self.kmer_length,
+                 self.window_size,
++                self.scheme,
+                 &mut self.buffers,
+             );
+             total_minimizers += self.buffers.minimizers.len();
+@@ -226,12 +234,13 @@ mod tests {
+             rel_threshold: 0.01,
+             prefix_length: 0,
+         };
+-        let mut kernel = FilterKernel::new(31, 15, params).unwrap();
++        let mut kernel = FilterKernel::new(31, 15, Scheme::Minimizer, params).unwrap();
+         assert!(kernel.classify_read(&index, b"ACGT", false).keep);
+ 
+         let mut kernel = FilterKernel::new(
+             31,
+             15,
++            Scheme::Minimizer,
+             FilterParams {
+                 deplete: false,
+                 ..params
+diff --git a/src/index.rs b/src/index.rs
+index 41d55e4..058c6cb 100644
+--- a/src/index.rs
++++ b/src/index.rs
+@@ -28,11 +28,11 @@ use std::time::Instant;
+ use indicatif::ProgressBar;
+ 
+ /// Index format version
+-pub const INDEX_FORMAT_VERSION: u8 = 3;
++pub const INDEX_FORMAT_VERSION: u8 = 4;
+ 
+ /// BFF format version. The on-disk magic is b"DBF" followed by the fingerprint
+ /// width in bits (16 or 32), so 16-/32-bit indexes are distinguishable.
+-pub const BFF_FORMAT_VERSION: u8 = 1;
++pub const BFF_FORMAT_VERSION: u8 = 2;
+ 
+ /// Serialisable header for the index file
+ #[derive(Serialize, Deserialize, Debug)]
+@@ -40,17 +40,29 @@ pub struct IndexHeader {
+     pub format_version: u8,
+     pub kmer_length: u8,
+     pub window_size: u8,
++    /// Selection scheme (see [`crate::Scheme::as_u8`]); 0 = minimizer, 1 = closed syncmer
++    pub scheme: u8,
+ }
+ 
+ impl IndexHeader {
+     pub fn new(kmer_length: u8, window_size: u8) -> Self {
++        Self::with_scheme(kmer_length, window_size, crate::Scheme::Minimizer)
++    }
++
++    pub fn with_scheme(kmer_length: u8, window_size: u8, scheme: crate::Scheme) -> Self {
+         IndexHeader {
+             format_version: INDEX_FORMAT_VERSION,
+             kmer_length,
+             window_size,
++            scheme: scheme.as_u8(),
+         }
+     }
+ 
++    /// Selection scheme
++    pub fn scheme(&self) -> crate::Scheme {
++        crate::Scheme::from_u8(self.scheme).unwrap_or_default()
++    }
++
+     /// Validate header
+     pub fn validate(&self) -> anyhow::Result<()> {
+         if self.format_version != INDEX_FORMAT_VERSION {
+@@ -59,6 +71,22 @@ impl IndexHeader {
+                 self.format_version
+             ));
+         }
++        let Some(scheme) = crate::Scheme::from_u8(self.scheme) else {
++            return Err(anyhow::anyhow!("Unknown selection scheme code: {}", self.scheme));
++        };
++        if scheme == crate::Scheme::Syncmer {
++            // kmer_length is the key length l, window_size the s-mer length s.
++            let l = self.kmer_length as usize;
++            let s = self.window_size as usize;
++            if s < 4 || s >= l || l > 32 || l.is_multiple_of(2) {
++                return Err(anyhow::anyhow!(
++                    "Invalid syncmer parameters: l={}, s={} (constraints: 4<=s<l, l<=32, l odd)",
++                    l,
++                    s
++                ));
++            }
++            return Ok(());
++        }
+ 
+         let k = self.kmer_length as usize;
+         let w = self.window_size as usize;
+@@ -97,6 +125,8 @@ pub struct BffHeader {
+     pub window_size: u8,
+     /// Distinct minimizers inserted (not BinaryFuse32::len())
+     pub key_count: u64,
++    /// Selection scheme code, as in [`IndexHeader::scheme`]
++    pub scheme: u8,
+ }
+ 
+ impl BffHeader {
+@@ -108,9 +138,15 @@ impl BffHeader {
+             kmer_length,
+             window_size,
+             key_count,
++            scheme: 0,
+         }
+     }
+ 
++    /// Selection scheme
++    pub fn scheme(&self) -> crate::Scheme {
++        crate::Scheme::from_u8(self.scheme).unwrap_or_default()
++    }
++
+     /// Fingerprint width in bits (16 or 32), encoded in the magic
+     pub fn filter_bits(&self) -> u8 {
+         self.magic[3]
+@@ -141,7 +177,7 @@ impl BffHeader {
+             ));
+         }
+         // Reuse exact k/w constraints
+-        IndexHeader::new(self.kmer_length, self.window_size).validate()
++        IndexHeader::with_scheme(self.kmer_length, self.window_size, self.scheme()).validate()
+     }
+ }
+ 
+@@ -306,7 +342,7 @@ pub fn load_bff(reader: &mut impl Read) -> Result<(crate::MinimizerSet, IndexHea
+         }
+     };
+ 
+-    let index_header = IndexHeader::new(header.kmer_length, header.window_size);
++    let index_header = IndexHeader::with_scheme(header.kmer_length, header.window_size, header.scheme());
+     let set = crate::MinimizerSet::Fuse(crate::FuseFilter {
+         filter,
+         key_count: header.key_count as usize,
+@@ -499,12 +535,13 @@ pub fn freeze(index_path: &Path, output_path: Option<&Path>, bits: u8) -> Result
+         bits, key_count, header.kmer_length, header.window_size
+     );
+ 
+-    let bff_header = BffHeader::new(
++    let mut bff_header = BffHeader::new(
+         bits,
+         header.kmer_length,
+         header.window_size,
+         key_count as u64,
+     );
++    bff_header.scheme = header.scheme;
+ 
+     // Header via serde, filter via native bincode
+     let mut writer: BufWriter<Box<dyn Write>> = match output_path {
+@@ -582,11 +619,12 @@ impl<Rf: Record> ParallelProcessor<Rf> for BuildIndexProcessor<'_> {
+         self.local_stats.total_seqs += 1;
+         self.local_stats.total_bp += seq.len() as u64;
+ 
+-        crate::minimizers::fill_minimizers(
++        crate::minimizers::fill_selected(
+             &seq,
+             &self.hasher,
+             self.config.kmer_length,
+             self.config.window_size,
++            self.config.scheme,
+             &mut self.buffers,
+         );
+ 
+@@ -681,14 +719,16 @@ pub fn build(config: &IndexConfig) -> Result<()> {
+     let reader = reader_with_inferred_batch_size(in_path)?;
+ 
+     eprintln!(
+-        "Building index (k={}, w={})",
+-        config.kmer_length, config.window_size
++        "Building index (k={}, w={}, scheme={})",
++        config.kmer_length,
++        config.window_size,
++        config.scheme.name()
+     );
+ 
+     let mut processor = if config.kmer_length <= 32 {
+         BuildIndexProcessor {
+             config,
+-            hasher: KmerHasher::new(config.kmer_length as usize),
++            hasher: KmerHasher::new(config.scheme.hash_len(config.kmer_length, config.window_size)),
+             local_stats: ProcessingStats::default(),
+             buffers: Buffers::new_u64(),
+             local_minimizers_u64: Some(RapidHashSet::default()),
+@@ -700,7 +740,7 @@ pub fn build(config: &IndexConfig) -> Result<()> {
+     } else {
+         BuildIndexProcessor {
+             config,
+-            hasher: KmerHasher::new(config.kmer_length as usize),
++            hasher: KmerHasher::new(config.scheme.hash_len(config.kmer_length, config.window_size)),
+             local_stats: ProcessingStats::default(),
+             buffers: Buffers::new_u128(),
+             local_minimizers_u64: None,
+@@ -736,7 +776,7 @@ pub fn build(config: &IndexConfig) -> Result<()> {
+         stats.total_bp
+     );
+ 
+-    let header = IndexHeader::new(config.kmer_length, config.window_size);
++    let header = IndexHeader::with_scheme(config.kmer_length, config.window_size, config.scheme);
+ 
+     // Write to output path or stdout
+     dump_minimizers(&all_minimizers, &header, config.output_path.as_deref())?;
+@@ -806,6 +846,7 @@ impl HitSet {
+ struct DiffIndexProcessor<'a> {
+     kmer_length: u8,
+     window_size: u8,
++    scheme: crate::Scheme,
+     hasher: KmerHasher,
+     /// Index being subtracted from. Read-only while streaming, so every thread probes
+     /// it without locking; the removal itself is a single pass once streaming is done.
+@@ -832,11 +873,12 @@ impl<Rf: Record> ParallelProcessor<Rf> for DiffIndexProcessor<'_> {
+             return Ok(());
+         }
+ 
+-        crate::minimizers::fill_minimizers_unchecked(
++        crate::minimizers::fill_selected_unchecked(
+             &seq,
+             &self.hasher,
+             self.kmer_length,
+             self.window_size,
++            self.scheme,
+             &mut self.buffers,
+         );
+ 
+@@ -914,6 +956,7 @@ fn stream_diff_fastx(
+         input_path: PathBuf::new(),
+         kmer_length,
+         window_size,
++        scheme: first_header.scheme(),
+         output_path: None,
+         threads: 0,
+         quiet: false,
+@@ -957,7 +1000,8 @@ fn stream_diff_fastx(
+     let mut processor = DiffIndexProcessor {
+         kmer_length,
+         window_size,
+-        hasher: KmerHasher::new(kmer_length as usize),
++        scheme: first_header.scheme(),
++        hasher: KmerHasher::new(first_header.scheme().hash_len(kmer_length, window_size)),
+         first: first_minimizers,
+         buffers: if kmer_length <= 32 {
+             Buffers::new_u64()
+@@ -1128,6 +1172,7 @@ pub fn info(index_path: &Path) -> Result<()> {
+         eprintln!("  Format version: {}", header.format_version);
+         eprintln!("  K-mer length (k): {}", header.kmer_length);
+         eprintln!("  Window size (w): {}", header.window_size);
++        eprintln!("  Scheme: {}", header.scheme().name());
+         eprintln!("  Key count: {}", header.key_count);
+         eprintln!(
+             "  File size: {} bytes (~{:.2} bits/key)",
+@@ -1148,6 +1193,7 @@ pub fn info(index_path: &Path) -> Result<()> {
+         eprintln!("  Format version: {}", header.format_version);
+         eprintln!("  K-mer length (k): {}", header.kmer_length());
+         eprintln!("  Window size (w): {}", header.window_size());
++        eprintln!("  Scheme: {}", header.scheme().name());
+         eprintln!("  Distinct minimizer count: {}", minimizers.len());
+     }
+ 
+@@ -1421,18 +1467,32 @@ mod tests {
+     fn test_header_creation() {
+         let header = IndexHeader::new(31, 21);
+ 
+-        assert_eq!(header.format_version, 3);
++        assert_eq!(header.format_version, 4);
+         assert_eq!(header.kmer_length(), 31);
+         assert_eq!(header.window_size(), 21);
+     }
+ 
++    #[test]
++    fn test_syncmer_header_validation() {
++        use crate::Scheme;
++        assert!(IndexHeader::with_scheme(31, 16, Scheme::Syncmer).validate().is_ok());
++        assert!(IndexHeader::with_scheme(31, 3, Scheme::Syncmer).validate().is_err()); // s < 4
++        assert!(IndexHeader::with_scheme(31, 31, Scheme::Syncmer).validate().is_err()); // s >= l
++        assert!(IndexHeader::with_scheme(33, 16, Scheme::Syncmer).validate().is_err()); // l > 32
++        assert!(IndexHeader::with_scheme(30, 16, Scheme::Syncmer).validate().is_err()); // l even
++        assert_eq!(IndexHeader::with_scheme(31, 16, Scheme::Syncmer).scheme(), Scheme::Syncmer);
++        assert_eq!(Scheme::Syncmer.crate_params(31, 16), (16, 16));
++        assert_eq!(Scheme::Minimizer.crate_params(31, 15), (31, 15));
++    }
++
+     #[test]
+     fn test_header_validation() {
+-        // Valid header (v3 only)
++        // Valid header (v4 only)
+         let valid_header_v3 = IndexHeader {
+-            format_version: 3,
++            format_version: 4,
+             kmer_length: 31,
+             window_size: 21,
++            scheme: 0,
+         };
+         assert!(valid_header_v3.validate().is_ok());
+ 
+@@ -1441,6 +1501,7 @@ mod tests {
+             format_version: 1,
+             kmer_length: 31,
+             window_size: 21,
++            scheme: 0,
+         };
+         assert!(invalid_header_v1.validate().is_err());
+ 
+@@ -1448,51 +1509,58 @@ mod tests {
+             format_version: 2,
+             kmer_length: 31,
+             window_size: 21,
++            scheme: 0,
+         };
+         assert!(invalid_header_v2.validate().is_err());
+ 
+         let invalid_header_v4 = IndexHeader {
+-            format_version: 4,
++            format_version: 5,
+             kmer_length: 31,
+             window_size: 21,
++            scheme: 0,
+         };
+         assert!(invalid_header_v4.validate().is_err());
+ 
+         // Test k <= 61 constraint
+         let valid_max_k = IndexHeader {
+-            format_version: 3,
++            format_version: 4,
+             kmer_length: 61,
+             window_size: 15,
++            scheme: 0,
+         };
+         assert!(valid_max_k.validate().is_ok()); // k=61 is valid
+ 
+         let invalid_max_k = IndexHeader {
+-            format_version: 3,
++            format_version: 4,
+             kmer_length: 63,
+             window_size: 15,
++            scheme: 0,
+         };
+         assert!(invalid_max_k.validate().is_err()); // k=63 exceeds 61
+ 
+         // Test k+w <= 96 constraint
+         let valid_max_kw = IndexHeader {
+-            format_version: 3,
++            format_version: 4,
+             kmer_length: 61,
+             window_size: 35,
++            scheme: 0,
+         };
+         assert!(valid_max_kw.validate().is_ok()); // k+w=96 is valid
+ 
+         let invalid_max_kw = IndexHeader {
+-            format_version: 3,
++            format_version: 4,
+             kmer_length: 61,
+             window_size: 36,
++            scheme: 0,
+         };
+         assert!(invalid_max_kw.validate().is_err()); // k+w=97 exceeds 96
+ 
+         // Test k must be odd
+         let invalid_even = IndexHeader {
+-            format_version: 3,
++            format_version: 4,
+             kmer_length: 30,
+             window_size: 15,
++            scheme: 0,
+         };
+         assert!(invalid_even.validate().is_err()); // k=30 is even
+     }
+diff --git a/src/lib.rs b/src/lib.rs
+index 7612ccd..f010131 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -33,8 +33,8 @@ pub use index::{
+     intersect as index_intersect, union as index_union,
+ };
+ pub use minimizers::{
+-    Buffers, DEFAULT_KMER_LENGTH, DEFAULT_WINDOW_SIZE, KmerHasher, compute_minimizers, decode_u64,
+-    decode_u128, fill_minimizers,
++    Buffers, DEFAULT_KMER_LENGTH, DEFAULT_WINDOW_SIZE, KmerHasher, Scheme, compute_minimizers,
++    compute_selected, decode_u64, decode_u128, fill_minimizers, fill_selected,
+ };
+ 
+ /// Validate that a threshold is within 0.0..=1.0
+@@ -381,9 +381,12 @@ pub struct IndexConfig {
+     /// K-mer length used for indexing
+     pub kmer_length: u8,
+ 
+-    /// Minimizer window size used for indexing
++    /// Minimizer window size used for indexing (s-mer length for syncmers)
+     pub window_size: u8,
+ 
++    /// Selection scheme
++    pub scheme: Scheme,
++
+     /// Path to output file (None for stdout)
+     pub output_path: Option<PathBuf>,
+ 
+@@ -398,6 +401,10 @@ pub struct IndexConfig {
+ impl IndexConfig {
+     /// Validate k-mer and window size constraints
+     pub fn validate(&self) -> Result<()> {
++        if self.scheme == Scheme::Syncmer {
++            return index::IndexHeader::with_scheme(self.kmer_length, self.window_size, self.scheme)
++                .validate();
++        }
+         let k = self.kmer_length as usize;
+         let w = self.window_size as usize;
+ 
+diff --git a/src/main.rs b/src/main.rs
+index e48c398..95677fd 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -160,10 +160,14 @@ enum IndexCommand {
+         #[arg(short = 'k', default_value_t = DEFAULT_KMER_LENGTH)]
+         kmer_length: u8,
+ 
+-        /// Minimizer window size used for indexing
++        /// Minimizer window size used for indexing (with --scheme syncmer: the s-mer length; -k is then the key length l, odd and <= 32)
+         #[arg(short = 'w', default_value_t = DEFAULT_WINDOW_SIZE)]
+         window_size: u8,
+ 
++        /// K-mer selection scheme: random minimizers (default) or closed syncmers
++        #[arg(long = "scheme", value_enum, default_value_t = deacon::Scheme::Minimizer)]
++        scheme: deacon::Scheme,
++
+         /// Path to output file (stdout if not specified)
+         #[arg(short = 'o', long = "output")]
+         output: Option<PathBuf>,
+@@ -479,6 +483,7 @@ fn process_command(command: &Command) -> Result<(), anyhow::Error> {
+                 input,
+                 kmer_length,
+                 window_size,
++                scheme,
+                 output,
+                 threads,
+                 quiet,
+@@ -487,6 +492,7 @@ fn process_command(command: &Command) -> Result<(), anyhow::Error> {
+                     input_path: input.clone(),
+                     kmer_length: *kmer_length,
+                     window_size: *window_size,
++                    scheme: *scheme,
+                     output_path: output.clone(),
+                     threads: *threads,
+                     quiet: *quiet,
+diff --git a/src/minimizers.rs b/src/minimizers.rs
+index e4b1c56..d223e13 100644
+--- a/src/minimizers.rs
++++ b/src/minimizers.rs
+@@ -3,6 +3,60 @@ use packed_seq::{PackedNSeqVec, SeqVec, u32x8, unpack_base};
+ pub const DEFAULT_KMER_LENGTH: u8 = 31;
+ pub const DEFAULT_WINDOW_SIZE: u8 = 15;
+ 
++/// K-mer selection scheme. Stored in the index header; reads are always
++/// sketched with the scheme of the index they are compared against.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
++#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
++#[serde(rename_all = "lowercase")]
++pub enum Scheme {
++    /// Random minimizers: keys are k-mers (k = kmer_length), one per window of
++    /// w consecutive k-mers (w = window_size). Density ≈ 2/(w+1).
++    #[default]
++    Minimizer,
++    /// Closed syncmers: keys are l-mers (l = kmer_length) whose smallest s-mer
++    /// (s = window_size) sits at either end. Selection is context-free, so a
++    /// mutation next to a key cannot change whether it is selected.
++    /// Density ≈ 2/(l−s+1); l ≤ 32 and odd.
++    Syncmer,
++}
++
++impl Scheme {
++    pub fn from_u8(v: u8) -> Option<Self> {
++        match v {
++            0 => Some(Self::Minimizer),
++            1 => Some(Self::Syncmer),
++            _ => None,
++        }
++    }
++    pub fn as_u8(self) -> u8 {
++        match self {
++            Self::Minimizer => 0,
++            Self::Syncmer => 1,
++        }
++    }
++    pub fn name(self) -> &'static str {
++        match self {
++            Self::Minimizer => "minimizer",
++            Self::Syncmer => "syncmer",
++        }
++    }
++    /// (k, w) in simd-minimizers' own notation. For syncmers the crate's k is
++    /// the s-mer and its window l = w + k − 1 is our key, so w = l − s + 1.
++    pub fn crate_params(self, kmer_length: u8, window_size: u8) -> (usize, usize) {
++        match self {
++            Self::Minimizer => (kmer_length as usize, window_size as usize),
++            Self::Syncmer => (
++                window_size as usize,
++                kmer_length as usize - window_size as usize + 1,
++            ),
++        }
++    }
++    /// Length of the unit the hasher hashes: k for minimizers, s for syncmers.
++    pub fn hash_len(self, kmer_length: u8, window_size: u8) -> usize {
++        self.crate_params(kmer_length, window_size).0
++    }
++}
++
+ /// Decode u64 minimizer (2-bit canonical k-mer) to ASCII
+ pub fn decode_u64(minimizer: u64, k: u8) -> Vec<u8> {
+     (0..k)
+@@ -67,13 +121,25 @@ pub fn compute_minimizers(
+     hasher: &KmerHasher,
+     kmer_length: u8,
+     window_size: u8,
++) -> crate::MinimizerVec {
++    compute_selected(seq, hasher, kmer_length, window_size, Scheme::Minimizer)
++}
++
++/// Returns vector of all selected keys for a sequence under `scheme`.
++/// The hasher must have been built with `KmerHasher::new(scheme.hash_len(k, w))`.
++pub fn compute_selected(
++    seq: &[u8],
++    hasher: &KmerHasher,
++    kmer_length: u8,
++    window_size: u8,
++    scheme: Scheme,
+ ) -> crate::MinimizerVec {
+     let mut buffers = if kmer_length <= 32 {
+         Buffers::new_u64()
+     } else {
+         Buffers::new_u128()
+     };
+-    fill_minimizers(seq, hasher, kmer_length, window_size, &mut buffers);
++    fill_selected(seq, hasher, kmer_length, window_size, scheme, &mut buffers);
+     buffers.minimizers
+ }
+ 
+@@ -160,46 +226,83 @@ pub fn fill_minimizers(
+     window_size: u8,
+     buffers: &mut Buffers,
+ ) {
+-    let Buffers {
+-        packed_nseq,
+-        positions,
+-        minimizers,
+-        cache,
+-    } = buffers;
+-
+-    packed_nseq.seq.clear();
+-    packed_nseq.ambiguous.clear();
+-    minimizers.clear();
+-    positions.clear();
++    fill_selected(seq, hasher, kmer_length, window_size, Scheme::Minimizer, buffers);
++}
+ 
++/// Fill a vector with the keys selected under `scheme`, skipping non-ACGT windows
++pub fn fill_selected(
++    seq: &[u8],
++    hasher: &KmerHasher,
++    kmer_length: u8,
++    window_size: u8,
++    scheme: Scheme,
++    buffers: &mut Buffers,
++) {
+     // Skip if sequence is too short
+     if seq.len() < kmer_length as usize {
++        let Buffers {
++            packed_nseq,
++            positions,
++            minimizers,
++            cache: _,
++        } = buffers;
++        packed_nseq.seq.clear();
++        packed_nseq.ambiguous.clear();
++        minimizers.clear();
++        positions.clear();
+         return;
+     }
++    fill_selected_unchecked(seq, hasher, kmer_length, window_size, scheme, buffers);
++}
+ 
+-    // Pack the sequence into 2-bit representation.
+-    packed_nseq.seq.push_ascii(seq);
+-    packed_nseq.ambiguous.push_ascii(seq);
+-
+-    // Get minimizer positions using simd-minimizers
+-    let out = simd_minimizers::canonical_minimizers(kmer_length as usize, window_size as usize)
+-        .hasher(hasher)
+-        .run_skip_ambiguous_windows_with_buf(packed_nseq.as_slice(), positions, cache);
+-
+-    match minimizers {
+-        crate::MinimizerVec::U64(vec) => {
+-            vec.extend(out.pos_and_values_u64().map(|(_pos, val)| val));
++/// Run the selected scheme over a packed sequence and append the key values.
++#[inline]
++fn run_scheme_into(
++    scheme: Scheme,
++    kmer_length: u8,
++    window_size: u8,
++    hasher: &KmerHasher,
++    packed_nseq: &PackedNSeqVec,
++    positions: &mut Vec<u32>,
++    cache: &mut (simd_minimizers::Cache, Vec<u32x8>, Vec<u32x8>),
++    minimizers: &mut crate::MinimizerVec,
++) {
++    let (ck, cw) = scheme.crate_params(kmer_length, window_size);
++    match scheme {
++        Scheme::Minimizer => {
++            let out = simd_minimizers::canonical_minimizers(ck, cw)
++                .hasher(hasher)
++                .run_skip_ambiguous_windows_with_buf(packed_nseq.as_slice(), positions, cache);
++            match minimizers {
++                crate::MinimizerVec::U64(vec) => {
++                    vec.extend(out.pos_and_values_u64().map(|(_pos, val)| val));
++                }
++                crate::MinimizerVec::U128(vec) => {
++                    vec.extend(out.pos_and_values_u128().map(|(_pos, val)| val));
++                }
++            };
+         }
+-        crate::MinimizerVec::U128(vec) => {
+-            vec.extend(out.pos_and_values_u128().map(|(_pos, val)| val));
++        Scheme::Syncmer => {
++            let out = simd_minimizers::canonical_closed_syncmers(ck, cw)
++                .hasher(hasher)
++                .run_skip_ambiguous_windows_with_buf(packed_nseq.as_slice(), positions, cache);
++            match minimizers {
++                crate::MinimizerVec::U64(vec) => {
++                    vec.extend(out.pos_and_values_u64().map(|(_pos, val)| val));
++                }
++                crate::MinimizerVec::U128(vec) => {
++                    vec.extend(out.pos_and_values_u128().map(|(_pos, val)| val));
++                }
++            };
+         }
+-    };
++    }
+ }
+ 
+ /// Fill minimizer buffers for a sequence already known to be at least `kmer_length`.
+ ///
+ /// This avoids a redundant short-read branch in filtering hot paths that already
+ /// handle short records before minimizer computation.
++#[allow(dead_code)]
+ #[inline]
+ pub(crate) fn fill_minimizers_unchecked(
+     seq: &[u8],
+@@ -207,6 +310,19 @@ pub(crate) fn fill_minimizers_unchecked(
+     kmer_length: u8,
+     window_size: u8,
+     buffers: &mut Buffers,
++) {
++    fill_selected_unchecked(seq, hasher, kmer_length, window_size, Scheme::Minimizer, buffers);
++}
++
++/// Scheme-aware variant of [`fill_minimizers_unchecked`].
++#[inline]
++pub(crate) fn fill_selected_unchecked(
++    seq: &[u8],
++    hasher: &KmerHasher,
++    kmer_length: u8,
++    window_size: u8,
++    scheme: Scheme,
++    buffers: &mut Buffers,
+ ) {
+     let Buffers {
+         packed_nseq,
+@@ -223,18 +339,7 @@ pub(crate) fn fill_minimizers_unchecked(
+     packed_nseq.seq.push_ascii(seq);
+     packed_nseq.ambiguous.push_ascii(seq);
+ 
+-    let out = simd_minimizers::canonical_minimizers(kmer_length as usize, window_size as usize)
+-        .hasher(hasher)
+-        .run_skip_ambiguous_windows_with_buf(packed_nseq.as_slice(), positions, cache);
+-
+-    match minimizers {
+-        crate::MinimizerVec::U64(vec) => {
+-            vec.extend(out.pos_and_values_u64().map(|(_pos, val)| val));
+-        }
+-        crate::MinimizerVec::U128(vec) => {
+-            vec.extend(out.pos_and_values_u128().map(|(_pos, val)| val));
+-        }
+-    };
++    run_scheme_into(scheme, kmer_length, window_size, hasher, packed_nseq, positions, cache, minimizers);
+ }
+ 
+ #[cfg(test)]
+diff --git a/tests/cli_tests.rs b/tests/cli_tests.rs
+index d7bb8ad..c81b90f 100644
+--- a/tests/cli_tests.rs
++++ b/tests/cli_tests.rs
+@@ -44,6 +44,7 @@ fn unit_interval_validation() {
+         FilterKernel::new(
+             31,
+             15,
++            deacon::Scheme::Minimizer,
+             FilterParams {
+                 deplete: false,
+                 abs_threshold: 1,
