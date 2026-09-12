@@ -8,7 +8,7 @@ from pathlib import Path
 
 FAMILY = {"mash": "F1", "bindash": "F1", "mash_screen": "F1", "sourmash": "F2", "sourmash_gather": "F2", "sourmash_compare": "F2",
           "sourmash_read": "F2", "sylph": "F2", "sylph_profile": "F2", "sylph_profile_bc": "F2", "sylph_read": "F2", "yacht": "F2",
-          "cmash": "F2", "maxgeomhash": "F2", "hulk": "F3", "gsearch": "F3", "dashing2": "F4", "hypergen": "F7",
+          "cmash": "F2", "maxgeomhash": "F2", "i2brad": "F2", "syn2bani": "F2", "fast2brad_m": "F2", "hulk": "F3", "gsearch": "F3", "dashing2": "F4", "hypergen": "F7",
           "deacon": "F6", "deacon_panhuman": "F6", "deacon_syncmer": "F6", "kraken2": "F6",
           "bowtie2": "aln", "hostile": "aln", "minimap2": "aln", "minimap2_cov": "aln", "skani": "aln", "fastani": "aln", "simka": "count"}
 HEADER = "task,tool,tool_version,family,stage,dataset,params,threads,rep,wall_s,user_s,sys_s,max_rss_kb,input_bp,sketch_bytes,index_bytes,node,cpu_model,timestamp\n"

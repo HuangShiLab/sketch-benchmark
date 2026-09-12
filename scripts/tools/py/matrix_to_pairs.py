@@ -12,12 +12,9 @@ ap.add_argument("--names"); ap.add_argument("--task", required=True); ap.add_arg
 ap.add_argument("--estimand", default="jaccard"); ap.add_argument("--out", required=True)
 a = ap.parse_args()
 
-def gid(p):
-    n = Path(p).name
-    for e in (".fa.gz", ".fna.gz", ".fasta.gz", ".fq.gz", ".fastq.gz", ".fa", ".fna", ".fasta"):
-        if n.endswith(e): n = n[:-len(e)]; break
-    n = re.sub(r"_[12]$", "", n)
-    m = re.match(r"^(GC[AF]_\d+\.\d+)", n); return m.group(1) if m else n.split("_genomic")[0]
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parent))
+from names import genome_name as gid
 
 names, M = None, []
 txt = [l for l in open(a.matrix) if l.strip() and not l.startswith("#")]

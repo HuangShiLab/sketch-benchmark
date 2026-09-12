@@ -40,6 +40,7 @@ set +e
   bash "$REPO_DIR/scripts/tools/$TOOL.sh" query "$T" "$DATASET" "$PARAMS" "$THREADS" "$W" "$IDX" "$OUT" > "$OUT/tool.log" 2>&1
 rc=$?; set -e
 [ $rc -eq 0 ] || { echo "tool failed rc=$rc; see $OUT/tool.log"; tail -20 "$OUT/tool.log"; exit $rc; }
+[ "$T" = T1 ] && [ -f "$OUT/pairs.tsv" ] && python "$REPO_DIR/scripts/tools/py/names.py" "$OUT/pairs.tsv"   # one naming rule for all T1 tools
 inputs=(); [ -n "$IN1" ] && [ -f "$IN1" ] && inputs+=("$IN1"); [ -n "$IN2" ] && [ -f "$IN2" ] && inputs+=("$IN2")
 bp_sidecar=""; [ -f "$(dirname "$P1")/reads.bp" ] && bp_sidecar="$(dirname "$P1")/reads.bp"
 python "$REPO_DIR/scripts/benchmark/timing_row.py" --task "$T" --tool "$TOOL" --stage query \

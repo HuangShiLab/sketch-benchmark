@@ -20,6 +20,17 @@ if [ ! -x "$SB_BIN/deacon-syncmer" ]; then
     cp target/release/deacon "$SB_BIN/deacon-syncmer" )
 fi
 
+# 2b-RAD tool rows: Syn2bANI (T1) and Fast2bRAD-M (T2/T3), both Rust.
+build_rust() {   # <name> <url> <tag> <binary-name-in-target>
+  local name="$1" url="$2" tag="$3" bin="$4"
+  [ -x "$SB_BIN/$bin" ] && return 0
+  [ -d "$SB_SRC/$name" ] || git clone "$url" "$SB_SRC/$name"
+  ( cd "$SB_SRC/$name" && git fetch -q && git checkout -q "$tag" && cargo build --release && cp "target/release/$bin" "$SB_BIN/$bin" ) \
+    || echo "WARN: $name build failed; its rows will be skipped"
+}
+build_rust syn2bani   "$SYN2BANI_URL"  "$SYN2BANI_TAG"  syn2bani
+build_rust fast2brad  "$FAST2BRAD_URL" "$FAST2BRAD_TAG" fast2bRAD-M
+
 # gsearch (ProbMinHash + HNSW). Optional; the ProbMinHash row also runs via
 # Dashing 2's --pminhash mode, so a failed build here loses nothing.
 if [ ! -x "$SB_BIN/gsearch" ]; then

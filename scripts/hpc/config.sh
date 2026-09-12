@@ -80,6 +80,9 @@ export CAMI_STRAIN_DIR="${CAMI_STRAIN_DIR:-TODO}"
 export HMP_SAMPLE_LIST="${HMP_SAMPLE_LIST:-$REPO_DIR/refs/hmp_samples.tsv}"   # sample_id  site  srr
 export DASHING2_URL="${DASHING2_URL:-TODO}"            # github release asset, linux x86_64
 export DEACON_UPSTREAM_URL="${DEACON_UPSTREAM_URL:-https://github.com/bede/deacon.git}"
+# 2b-RAD tool rows (HuangShiLab); pin a commit before the full run. `TAG=main` builds the tip.
+export SYN2BANI_URL="${SYN2BANI_URL:-https://github.com/HuangShiLab/Syn2bANI.git}";       export SYN2BANI_TAG="${SYN2BANI_TAG:-main}"
+export FAST2BRAD_URL="${FAST2BRAD_URL:-https://github.com/HuangShiLab/Fast2bRAD-M.git}";  export FAST2BRAD_TAG="${FAST2BRAD_TAG:-main}"
 export DEACON_UPSTREAM_TAG="${DEACON_UPSTREAM_TAG:-f2fa660d6dfc46dfa04d2b2dca1adeda8e2cfe27}"   # bede/deacon main @ 0.17.0, the commit env/deacon-syncmer.patch was made against
 
 # ---------------------------------------------------------------------------
@@ -108,6 +111,8 @@ export DASHING_LOG2M="10 12 14 16"             # 1K 4K 16K 64K
 export BINDASH_S="1000 4000 16000 64000"
 export SYLPH_C="1000 200 50"                   # c=200 default
 export HULK_S="512 2048"
+export I2BRAD_ENZ="BcgI BsaXI CspCI"            # motif-defined sampling: enzymes swept in T1 (density ~ scaled 2000-4000)
+export DENSITY_ENZ="BcgI,BsaXI,CspCI,AlfI,CjePI,BplI"   # enzyme-density scan (scripts/analysis/enzyme_density.sh)
 export DEACON_W="15"
 export DEACON_A="1 2 3"
 export DEACON_R="0 0.01 0.05"
@@ -120,7 +125,7 @@ export SB_THREADS="1 16"
 export SB_REPS=3
 if [ "$SB_MINIMAL" = "1" ]; then
   export MASH_S="1000 16000"; export SOURMASH_SCALED="2000 100"; export DASHING_LOG2M="12"
-  export BINDASH_S="1000"; export SYLPH_C="200"; export HULK_S="512"
+  export BINDASH_S="1000"; export SYLPH_C="200"; export HULK_S="512"; export I2BRAD_ENZ="BcgI"
   export DEACON_A="2"; export DEACON_R="0.01"; export KRAKEN2_CONF="0"; export BOWTIE2_MAPQ="0"
   export SB_THREADS="16"; export SB_REPS=1
 fi

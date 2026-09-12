@@ -38,6 +38,9 @@ def T1_tools():
         "fastani":  (["default"], "default"),
         "maxgeomhash": (["b=64"], "b=64"),
         "hypergen": (["default"], "default"),
+        # motif-defined sampling (2b-RAD tags): mechanism row + tool row
+        "i2brad":   ([f"enz={e}" for e in grid("I2BRAD_ENZ")] + ([] if MIN else ["enz=BcgI+AlfI"]), "enz=BcgI"),
+        "syn2bani": (["panel=BcgI+AlfI+AloI+FalI"] + ([] if MIN else ["panel=BcgI"]), "panel=BcgI+AlfI+AloI+FalI"),
     }
     return t
 def T2_tools():
@@ -48,6 +51,8 @@ def T2_tools():
         "mash_screen":     ([f"k={K_M},s=10000,i=0.9"], f"k={K_M},s=10000,i=0.9"),
         "kraken2":         ([f"conf={c}" for c in ([0] if MIN else [0, 0.1])], "conf=0"),
         "minimap2_cov":    (["default"], "default"),
+        "i2brad":          (["enz=BcgI,min_hits=5,min_frac=0.001"] + ([] if MIN else ["enz=BcgI,min_hits=10,min_frac=0.005"]), "enz=BcgI,min_hits=5,min_frac=0.001"),
+        "fast2brad_m":     (["enz=BcgI,g=5"], "enz=BcgI,g=5"),
     }
 def T3_tools():
     return {
@@ -57,6 +62,8 @@ def T3_tools():
         "mash":             ([f"k={K_M},s=10000,m=1", f"k={K_M},s=10000,m=2"], f"k={K_M},s=10000,m=2"),
         "simka":            ([f"k={K_M}"], f"k={K_M}"),
         "sylph_profile_bc": ([f"k={K_M},c=200"], f"k={K_M},c=200"),
+        "i2brad":           (["enz=BcgI,abund=1", "enz=BcgI,abund=0"], "enz=BcgI,abund=1"),
+        "fast2brad_m":      (["enz=BcgI,g=5"], "enz=BcgI,g=5"),
     }
 def T4_tools():
     dg = [f"k={K_M},w={w},a={a},r={r}" for w in grid("DEACON_W") for a in grid("DEACON_A") for r in grid("DEACON_R")]
@@ -74,9 +81,9 @@ def T4_tools():
     }
 # tools whose index/sketch is built in stage 03 (others use existing indexes or need none)
 BUILD = {
-    "T1": {"mash", "bindash", "dashing2", "sourmash", "sylph", "maxgeomhash", "hypergen"},
-    "T2": {"sourmash_gather", "sylph_profile", "yacht", "mash_screen", "kraken2"},
-    "T3": {"sourmash_compare", "hulk", "dashing2", "mash", "sylph_profile_bc"},
+    "T1": {"mash", "bindash", "dashing2", "sourmash", "sylph", "maxgeomhash", "hypergen", "i2brad", "syn2bani"},
+    "T2": {"sourmash_gather", "sylph_profile", "yacht", "mash_screen", "kraken2", "i2brad", "fast2brad_m"},
+    "T3": {"sourmash_compare", "hulk", "dashing2", "mash", "sylph_profile_bc", "i2brad", "fast2brad_m"},
     "T4": {"deacon", "deacon_syncmer", "sylph_read", "sourmash_read"},
 }
 # build-time dataset (reference set) per task

@@ -41,11 +41,11 @@ with open(truth, "a") as tf:
                     continue
                 rng = random.Random(f"{a.seed}:{gid}:{p}:{series}")
                 mseq, c = mutate(seq, p, p / 10 if series == "indel" else 0.0, rng)
-                write_fasta([(f"{gid}_p{p:g}_{series}", mseq)], mp)
+                write_fasta([(f"{gid}.p{p:g}.{series}", mseq)], mp)
                 t = ani_truth(c)
                 ani = t["ani_subs_only"] if series == "subs" else t["ani_gapped"]
                 tf.write("\t".join(map(str, [
-                    f"{gid}:p{p:g}:{series}", gid, f"{gid}_p{p:g}_{series}", orig, mp, series, p,
+                    f"{gid}:p{p:g}:{series}", gid, f"{gid}.p{p:g}.{series}", orig, mp, series, p,
                     c["subs"], c["ins_bases"], c["del_bases"], c["L_orig"],
                     f"{t['ani_subs_only']:.6f}", f"{t['ani_gapped']:.6f}", f"{ani:.6f}", "simulation"])) + "\n")
 print(f"truth: {truth}")

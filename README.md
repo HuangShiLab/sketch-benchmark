@@ -5,10 +5,10 @@ A benchmark harness for "MinHash-family" sequence sketching tools, organised by
 the sketch-based host-depletion work in
 [rustyclean](https://github.com/HuangShiLab/rustyclean).
 
-Seven mechanism families are covered (F1 fixed-size MinHash, F2 scaled/threshold
-sketches such as FracMinHash, F3 weighted MinHash, F4 register sketches such as
-HyperLogLog/SetSketch, F5 order-aware sketches, F6 sampling schemes such as
-minimizers/syncmers, F7 vector/HD embeddings) across four tasks:
+Seven mechanism families are covered (F1 fixed-size MinHash, F2 content-defined
+sampling — FracMinHash, syncmers and motif-defined 2b-RAD tags, F3 weighted MinHash,
+F4 register sketches such as HyperLogLog/SetSketch, F5 order-aware sketches,
+F6 index samplers such as minimizers, F7 vector/HD embeddings) across four tasks:
 
 | Task | Question | Estimand | Truth | Standard output |
 |------|----------|----------|-------|-----------------|
@@ -23,7 +23,8 @@ defaults. Timing uses `/usr/bin/time -v` on inputs copied to `$TMPDIR`, three
 replicates, at 1 and 16 threads.
 
 The design document (datasets, ground truth, metrics, eligibility rules) is the
-companion work plan; this repository is its executable form.
+companion work plan; this repository is its executable form. The outline of the
+review it feeds is in [docs/review-outline.md](docs/review-outline.md).
 
 ## Layout
 
@@ -39,8 +40,10 @@ scripts/stage04_query.sh          querying + timing       (array over manifest.t
 scripts/stage05_metrics.sh        metrics_T1..T4.py, matched.py
 scripts/stage06_figures.sh        cross-task figures
 scripts/tools/<tool>.sh           one wrapper per tool: build + query, standard outputs
-scripts/tools/py/                 parsers shared by the wrappers
+scripts/tools/py/                 parsers shared by the wrappers; i2brad.py (in-silico 2b-RAD tag sampler); names.py (one genome-naming rule)
+scripts/analysis/                 stand-alone analyses (enzyme-density scan)
 scripts/benchmark/                manifests, timing rows, metrics, figures
+docs/                             review outline
 tests/                            metrics tests on synthetic fixtures; deacon syncmer smoke test
 ```
 
@@ -91,6 +94,18 @@ is skipped when present, so a failed array task is re-run by resubmitting the st
 * Tools that estimate a different quantity from the task's estimand are still run but
   flagged as cautionary rows (e.g. read-level sketching in T4), never as "losers".
 
+## Motif-defined sampling (2b-RAD tags)
+
+`scripts/tools/py/i2brad.py` is a tool-free sampler for type IIB restriction tags:
+a k-mer is selected iff it contains the enzyme's recognition motif at a fixed offset
+(15 enzymes; the double-stranded-core tag definition reproduces the Fast2bRAD-M tag
+lengths for all of them, and tags are strand-invariant — `tests/test_i2brad.py`).
+It is the *mechanism* row in T1–T3 (`i2brad`); the *tool* rows are `syn2bani`
+(T1) and `fast2brad_m` (T2/T3), built by `env/cargo-tools.sh`. The enzyme-density
+scan (`sbatch scripts/analysis/enzyme_density.sh`) writes tags per genome, GC
+dependence and the FracMinHash `scaled`-equivalent for `$DENSITY_ENZ` over the
+GTDB-5k pool — on random sequence BcgI comes out at `scaled ≈ 2100`.
+
 ## The deacon syncmer fork
 
 `env/deacon-syncmer.patch` adds a `--scheme {minimizer,syncmer}` option to
@@ -105,6 +120,7 @@ builds it as `$SB_BIN/deacon-syncmer`.
 
 ```bash
 python tests/test_metrics.py            # metrics_T1..T4, matched.py, timing_row.py, make_manifests.py on synthetic fixtures
+python tests/test_i2brad.py             # 2b-RAD sampler: tag lengths, strand invariance, containment ANI, detect, Bray-Curtis
 bash tests/smoke_deacon_syncmer.sh [path/to/deacon-syncmer]   # needs the patched binary
 ```
 
@@ -119,6 +135,9 @@ installed versions, and `TODO` entries in `config.sh` are download locations:
 * `sourmash` Python API: `MinHash.containment_ani(estimate_ci=True)` field names
   (`scripts/tools/py/sourmash_pairs.py`).
 * `maxgeomhash.sh` and `hypergen.sh` are stubs that exit 3 until the tools are installed.
+* `syn2bani.sh` (ANI units and `std_err` scale, `sketch --enzymes`) and `fast2brad_m.sh`
+  (columns of `*.GCF_detected.xls`, `quantify -l` list format); pin `SYN2BANI_TAG` /
+  `FAST2BRAD_TAG` in `config.sh`. Recognition sites and cut offsets in `i2brad.py` against REBASE.
 * `config.sh` TODOs: HPRC HG002 assemblies and HG00438 reads, ZymoBIOMICS runs and
   reference bundle, CAMI marine/strain-madness staging directories, dashing2 binary URL;
   `refs/hmp_samples.tsv` (columns `sample_id site srr`) must be curated by hand.

@@ -10,11 +10,9 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--sig", required=True); ap.add_argument("--k", type=int, required=True)
 ap.add_argument("--pairs", required=True); ap.add_argument("--out", required=True)
 a = ap.parse_args()
-def gid(p):
-    n = Path(p).name
-    for e in (".fa.gz", ".fna.gz", ".fasta.gz", ".fa", ".fna", ".fasta"):
-        if n.endswith(e): n = n[:-len(e)]; break
-    m = re.match(r"^(GC[AF]_\d+\.\d+)", n); return m.group(1) if m else n.split("_genomic")[0]
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parent))
+from names import genome_name as gid
 sigs = {}
 for s in sourmash.load_file_as_signatures(a.sig, ksize=a.k):
     for key in {gid(s.filename or ""), gid(s.name or ""), str(s.name)}:

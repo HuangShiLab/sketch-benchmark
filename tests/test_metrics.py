@@ -181,7 +181,7 @@ def test_manifests(tmp):
     env = dict(SB_SIM=str(sim), SB_REAL=str(real), SB_REFS=str(refs), SB_DATA=str(data), SB_MINIMAL="1", K_GENOME="21", K_META="31",
                SB_THREADS="16", SB_REPS="1", MASH_S="1000 16000", SOURMASH_SCALED="2000 100", DASHING_LOG2M="12", BINDASH_S="1000",
                SYLPH_C="200", HULK_S="512", DEACON_W="15", DEACON_A="2", DEACON_R="0.01", SYNCMER_S="16", KRAKEN2_CONF="0", BOWTIE2_MAPQ="0",
-               RC_PANEL_DIR="", CAMI_MARINE_DIR="TODO", CAMI_STRAIN_DIR="TODO", HMP_SAMPLE_LIST="")
+               RC_PANEL_DIR="", CAMI_MARINE_DIR="TODO", CAMI_STRAIN_DIR="TODO", HMP_SAMPLE_LIST="", I2BRAD_ENZ="BcgI")
     out = run("make_manifests.py", env=env)
     for t in ("T1", "T2", "T3", "T4"):
         m = pd.read_csv(data / t / "manifest.tsv", sep="\t", header=None); b = pd.read_csv(data / t / "build_manifest.tsv", sep="\t", header=None)
@@ -193,6 +193,10 @@ def test_manifests(tmp):
     assert "scale" not in set(m1.dataset)            # minimal mode drops the scale set
     b1 = pd.read_csv(data / "T1/build_manifest.tsv", sep="\t", header=None, names=["tool", "ref", "params", "threads"])
     assert set(b1.ref) == {"sim"}, set(b1.ref)       # T1 builds only for refsets that actually exist
+    assert {"i2brad", "syn2bani"} <= set(m1.tool) and "enz=BcgI" in set(m1.params)
+    m2 = pd.read_csv(data / "T2/manifest.tsv", sep="\t", header=None, names=["tool", "dataset", "params", "threads", "rep"])
+    m3 = pd.read_csv(data / "T3/manifest.tsv", sep="\t", header=None, names=["tool", "dataset", "params", "threads", "rep"])
+    assert {"i2brad", "fast2brad_m"} <= set(m2.tool) and {"i2brad", "fast2brad_m"} <= set(m3.tool)
     print("manifests ok:", out.strip().replace("\n", " | "))
 
 if __name__ == "__main__":
