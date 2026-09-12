@@ -66,7 +66,7 @@ New material
 
 1. Title — the working title is long; alternatives: "Sketching by estimand: …" or "Choose the estimator, not the name: …".
 2. §7 names no coding agent. Decide whether to name the tool(s) used and how to describe the human/agent division of labour; the section is written so either choice works.
-3. Author list, affiliations, and the exact competing-interests wording (§9).
+3. Author list is Yufeng Zhang and Shi Huang for now (affiliation: Faculty of Dentistry, HKU); competing-interests wording in §9 names S.H. — adjust if Y.Z. co-develops any of the tools.
 4. Journal. As written (21k words, 5 tables, 3 figures, 4 boxes) the piece is too long for any venue; see the cut list.
 5. Whether Figure 1 is drawn with five panels (as the caption now says) — no figure files exist yet.
 

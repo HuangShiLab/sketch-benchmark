@@ -9,11 +9,12 @@ from xml.sax.saxutils import escape
 def runs(text):
     """inline markdown -> list of <w:r> xml"""
     out = []
-    tokens = re.split(r"(\*\*.+?\*\*|\*[^*\s][^*]*?\*|`[^`]+`|\$[^$]+\$|\$\$[^$]+\$\$)", text)
+    tokens = re.split(r"(\*\*.+?\*\*|\*[^*\s][^*]*?\*|`[^`]+`|\$[^$]+\$|\$\$[^$]+\$\$|\^\{[^}]+\})", text)
     for t in tokens:
         if not t: continue
         props = ""; body = t
         if t.startswith("**") and t.endswith("**"): props = "<w:b/>"; body = t[2:-2]
+        elif t.startswith("^{") and t.endswith("}"): props = '<w:vertAlign w:val="superscript"/>'; body = t[2:-1]
         elif t.startswith("$$") and t.endswith("$$"): props = "<w:i/>"; body = t[2:-2]
         elif t.startswith("$") and t.endswith("$"): props = "<w:i/>"; body = t[1:-1]
         elif t.startswith("`") and t.endswith("`"): props = '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>'; body = t[1:-1]

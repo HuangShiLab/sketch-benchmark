@@ -96,9 +96,10 @@ def datasets(task):
         if (SIM / "T1/sim/truth.tsv").exists():
             rows.append(("sim", "pairs", str(SIM / "T1/sim"), "", str(SIM / "T1/sim/truth.tsv"), ""))
         if (SIM / "T1/real/truth.tsv").exists():
-            rows.append(("real", "pairs", str(SIM / "T1/real/genomes.list"), "", str(SIM / "T1/real/truth.tsv"), str(REFS / "t1_pairs.tsv")))
-        if (REFS / "gtdb5k.list").exists() and not MIN:
-            rows.append(("scale", "allvsall", str(REFS / "gtdb5k.list"), "", "", ""))
+            rows.append(("real", "pairs", str(SIM / "T1/real/genomes.list"), "", str(SIM / "T1/real/truth.tsv"), env("T1_PAIRS") or str(REFS / "t1_pairs.tsv")))
+        g5k = Path(env("GTDB5K_LIST") or str(REFS / "gtdb5k.list"))
+        if g5k.exists() and not MIN:
+            rows.append(("scale", "allvsall", str(g5k), "", "", ""))
     elif task == "T2":
         for d in sorted(glob.glob(str(SIM / "T2/*/DONE"))):
             dd = Path(d).parent
@@ -159,6 +160,8 @@ for task in a.tasks.split(","):
                     for p in params_list:
                         fb.write(f"{tool}\t{ref}\t{p}\t{TMAX}\n"); nb += 1
             qds = (["all"] if ds else []) if task == "T3" else [d[0] for d in ds]   # T3 tools run all-vs-all over every sample
+            if task == "T1" and tool in ("fastani", "skani"):
+                qds = [d for d in qds if d == "sim"]        # alignment anchors, not contestants, on real/scale (12.5M pairs at 5k genomes)
             if task == "T2" and tool == "minimap2_cov":
                 qds = [d for d in qds if not d.startswith("cov_50M")]      # gold only on 10M sets
             if task == "T4" and tool in ("sylph_read", "sourmash_read"):

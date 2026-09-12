@@ -94,13 +94,15 @@ export SIM_SEED="${SIM_SEED:-42}"
 export ISS_MODEL="${ISS_MODEL:-novaseq}"   # 151 bp on this cluster's ISS build
 export READ_LENGTH=151
 
-# Fixed reference lists — written once by stage 00, never regenerated.
-export GTDB5K_LIST="$SB_REFS/gtdb5k.list"
-export T1_GENOMES_LIST="$SB_REFS/t1_genomes.list"      # the 50 T1 base genomes
-export T1_PAIRS="$SB_REFS/t1_pairs.tsv"                # 2,000 stratified real pairs
-export T2_TARGETS_LIST="$SB_REFS/t2_targets.list"      # 20 spike-in targets (in GTDB-5k)
-export T3_POOL_LIST="$SB_REFS/t3_pool.list"            # 200 genomes for T3 design
-export T4_BACKGROUND_LIST="$SB_REFS/t4_background.list" # 30 microbial genomes for T4 sweeps
+# Fixed reference lists — written once by stage 00, never regenerated. Minimal mode
+# keeps its 10x-smaller lists apart (refs/minimal) so a later full run does not inherit them.
+export SB_LISTS="$SB_REFS"; [ "$SB_MINIMAL" = "1" ] && export SB_LISTS="$SB_REFS/minimal"
+export GTDB5K_LIST="$SB_LISTS/gtdb5k.list"
+export T1_GENOMES_LIST="$SB_LISTS/t1_genomes.list"      # the 50 T1 base genomes
+export T1_PAIRS="$SB_LISTS/t1_pairs.tsv"                # 2,000 stratified real pairs
+export T2_TARGETS_LIST="$SB_LISTS/t2_targets.list"      # 20 spike-in targets (in GTDB-5k)
+export T3_POOL_LIST="$SB_LISTS/t3_pool.list"            # 200 genomes for T3 design
+export T4_BACKGROUND_LIST="$SB_LISTS/t4_background.list" # 30 microbial genomes for T4 sweeps
 
 # ---------------------------------------------------------------------------
 # Sketch-size sweep grids (rule 2). Bytes per 5 Mbp genome in comments.

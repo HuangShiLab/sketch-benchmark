@@ -47,11 +47,12 @@ if [ -s "$SB_REFS/bac120_metadata_r202.tar.gz" ] && [ ! -s "$SB_REFS/bac120_meta
   f=$(ls "$SB_REFS"/bac120_metadata_r202*.tsv | head -1); [ "$f" = "$SB_REFS/bac120_metadata_r202.tsv" ] || mv "$f" "$SB_REFS/bac120_metadata_r202.tsv"
 fi
 # Lists are written once. gtdb_lists.py refuses to overwrite an existing list.
+mkdir -p "$SB_LISTS"
 python "$REPO_DIR/scripts/stage02_simulate/gtdb_lists.py" \
   --metadata "$SB_REFS/bac120_metadata_r202.tsv" --genome-dir "$MICROBIAL_GENOME_DIR" \
-  --seed "$SIM_SEED" --out-dir "$SB_REFS" $([ "$SB_MINIMAL" = "1" ] && echo --minimal)
+  --seed "$SIM_SEED" --out-dir "$SB_LISTS" $([ "$SB_MINIMAL" = "1" ] && echo --minimal)
 for l in gtdb5k.list t1_genomes.list t1_pairs.tsv t2_targets.list t3_pool.list t4_background.list; do
-  record "list:$l" present "$SB_REFS/$l" "$(stat -c %s "$SB_REFS/$l")" ""
+  record "list:$l" present "$SB_LISTS/$l" "$(stat -c %s "$SB_LISTS/$l")" ""
 done
 
 # --- 3. host references ------------------------------------------------------

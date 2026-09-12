@@ -53,6 +53,9 @@ tidy tables under `data/` and `figures/` do.
 
 ## Quick start (HKU HPC2021 / SLURM)
 
+The step-by-step plan — setup, interface verification, minimal run, priority order for
+the full run, sizes, monitoring, failure playbook — is [docs/hpc-runbook.md](docs/hpc-runbook.md).
+
 ```bash
 git clone git@github.com:HuangShiLab/sketch-benchmark.git
 cd sketch-benchmark
