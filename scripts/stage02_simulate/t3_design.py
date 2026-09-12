@@ -59,12 +59,21 @@ with open(out / "samples.tsv", "w") as fh:
 allg = sorted({x for v in vectors.values() for x in v})
 M = np.array([[vectors[s].get(x, 0.0) for x in allg] for s, _, _ in samples])
 names = [s for s, _, _ in samples]
+def prob_jaccard(x, y):
+    """J_P (Moulton & Jiang 2018): sum_d 1 / sum_d' max(x_d'/x_d, y_d'/y_d) over d with x_d, y_d > 0; scale-invariant."""
+    m = (x > 0) & (y > 0)
+    if not m.any(): return 0.0
+    xs, ys = x[m], y[m]
+    with np.errstate(divide="ignore"):
+        rx = x[:, None] / xs[None, :]; ry = y[:, None] / ys[None, :]      # rows d', cols d
+    return float((1.0 / np.maximum(rx, ry).sum(0)).sum())
 with open(out / "truth_dist.tsv", "w") as fh:
-    fh.write("sample_a\tsample_b\tbc_true\tjac_true\n")
+    fh.write("sample_a\tsample_b\tbc_true\tjac_true\tjp_true\n")      # jp_true = 1 - J_P (a distance, like the others)
     for i, j in itertools.combinations(range(len(names)), 2):
         x, y = M[i], M[j]
         bc = np.abs(x - y).sum() / (x + y).sum()
         px, py = x > 0, y > 0
         jac = 1 - (px & py).sum() / max(1, (px | py).sum())
-        fh.write(f"{names[i]}\t{names[j]}\t{bc:.6f}\t{jac:.6f}\n")
+        jp = 1 - prob_jaccard(x, y)
+        fh.write(f"{names[i]}\t{names[j]}\t{bc:.6f}\t{jac:.6f}\t{jp:.6f}\n")
 print(f"{len(samples)} samples ({a.groups} groups x {a.per_group} + depth replicas) -> {out}")

@@ -1,5 +1,7 @@
 # Review outline — k-mer sketching for biologists
 
+> Superseded by the full draft in [manuscript.md](manuscript.md) (revision notes in [manuscript-changes.md](manuscript-changes.md)); kept as the planning record.
+
 Working title: **k-mer sketching for biologists: mechanisms, size-matched benchmarks, and a build-your-own guide**
 (the earlier "MinHash and its descendants" no longer covers the content once
 motif-defined sampling is included).

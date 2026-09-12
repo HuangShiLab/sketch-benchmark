@@ -23,8 +23,9 @@ defaults. Timing uses `/usr/bin/time -v` on inputs copied to `$TMPDIR`, three
 replicates, at 1 and 16 threads.
 
 The design document (datasets, ground truth, metrics, eligibility rules) is the
-companion work plan; this repository is its executable form. The outline of the
-review it feeds is in [docs/review-outline.md](docs/review-outline.md).
+companion work plan; this repository is its executable form. The review it feeds lives in
+[docs/manuscript.md](docs/manuscript.md) (Word export alongside; revision notes in
+[docs/manuscript-changes.md](docs/manuscript-changes.md); planning outline in [docs/review-outline.md](docs/review-outline.md)).
 
 ## Layout
 
@@ -43,7 +44,7 @@ scripts/tools/<tool>.sh           one wrapper per tool: build + query, standard 
 scripts/tools/py/                 parsers shared by the wrappers; i2brad.py (in-silico 2b-RAD tag sampler); names.py (one genome-naming rule)
 scripts/analysis/                 stand-alone analyses (enzyme-density scan)
 scripts/benchmark/                manifests, timing rows, metrics, figures
-docs/                             review outline
+docs/                             manuscript (md + docx), revision notes, outline; tools/md2docx.py
 tests/                            metrics tests on synthetic fixtures; deacon syncmer smoke test
 ```
 

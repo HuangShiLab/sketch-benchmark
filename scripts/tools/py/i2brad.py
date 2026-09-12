@@ -159,12 +159,15 @@ def _genome_stats(path):
         for e in _ENZ: sites[e.name] += e.n_sites(seq); ntags[e.name].update(e.tags(seq))
     return genome_name(path), L, gc / L if L else float("nan"), sites, {k: len(v) for k, v in ntags.items()}
 
+_BASES = {"total": 0, "tag": 0}                                       # bases scanned vs bases inside tags (Rule 7 cost axis)
 def _reads_counter(paths):
-    c = Counter(); n_reads = 0
+    c = Counter(); n_reads = 0; tot = tag = 0
     for p in paths:
         for seq in read_seqs(p):
-            n_reads += 1
-            for e in _ENZ: c.update(e.tags(seq))
+            n_reads += 1; tot += len(seq)
+            for e in _ENZ:
+                t = e.tags(seq); c.update(t); tag += len(t) * e.k
+    _BASES["total"] += tot; _BASES["tag"] += tag
     return c, n_reads
 
 def tag_len(spec):
@@ -264,6 +267,8 @@ def cmd_detect(a):
             if c: hits[g] += 1; depth[g] += c
     n_tags = {l.split("\t")[0]: int(l.split("\t")[1]) for l in open(Path(a.db) / "genomes.tsv").read().splitlines()[1:]}
     obs = max(a.read_len - k + 1, 1) / a.read_len                        # P(read fully contains a tag it overlaps)
+    with open(str(a.out) + ".stat", "w") as fh:                                  # sequencing-cost sidecar: bases inside tags / bases scanned
+        fh.write(f"reads\t{n_reads}\nbases\t{_BASES['total']}\ntag_bases\t{_BASES['tag']}\ntag_fraction\t{_BASES['tag'] / max(1, _BASES['total']):.6f}\n")
     with open(a.out, "w") as fh:
         fh.write("genome\tscore\tcalled_present\tani_est\tcov_est\tabund_est\thits\tn_tags\n")
         for g, n in sorted(n_tags.items()):
@@ -277,7 +282,7 @@ def cmd_detect(a):
 def cmd_sketch(a):
     _init(a.enz); counter, n_reads = _reads_counter(a.reads)
     with gzip.open(a.out, "wt", compresslevel=4) as fh:
-        fh.write(f"#reads={n_reads}\tenz={a.enz}\n")
+        fh.write(f"#reads={n_reads}\tenz={a.enz}\tbases={_BASES['total']}\ttag_bases={_BASES['tag']}\n")
         for t, c in counter.items(): fh.write(f"{t}\t{c}\n")
     print(f"sketch: {n_reads} reads -> {len(counter)} distinct tags -> {a.out}")
 

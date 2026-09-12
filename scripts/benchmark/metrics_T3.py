@@ -44,7 +44,9 @@ for _, r in ds.iterrows():
         m = read_tsv(r["meta"]).iloc[0]; meta[r["dataset"]] = dict(group=m.get("group", ""), base=m.get("base_sample", r["dataset"]), pairs=fnum(m.get("pairs", "nan")))
 truth = None
 if truth_path and os.path.exists(truth_path):
-    T = read_tsv(truth_path); truth = {tuple(sorted((x, y))): (fnum(b), fnum(j)) for x, y, b, j in zip(T.sample_a, T.sample_b, T.bc_true, T.jac_true)}
+    T = read_tsv(truth_path)
+    jp = T.jp_true if "jp_true" in T.columns else [float("nan")] * len(T)          # probability-Jaccard distance (Q2 cross-scoring)
+    truth = {tuple(sorted((x, y))): (fnum(b), fnum(j), fnum(q)) for x, y, b, j, q in zip(T.sample_a, T.sample_b, T.bc_true, T.jac_true, jp)}
 hmp = None
 hl = os.environ.get("HMP_SAMPLE_LIST", "")
 if hl and os.path.exists(hl):
@@ -63,17 +65,20 @@ for tool, dataset, params, threads, rep, d in runs(a.runs, "dist.tsv"):
     row = dict(tool=tool, params=params, estimand=est, n_samples=len(names))
     if truth and len(simn) > 3:
         si = [ix[s] for s in simn]; Ds = D[np.ix_(si, si)]
-        B = np.zeros_like(Ds); Jm = np.zeros_like(Ds)
+        B = np.zeros_like(Ds); Jm = np.zeros_like(Ds); Pm = np.full_like(Ds, np.nan)
         for i, j in itertools.combinations(range(len(simn)), 2):
-            b, jc = truth.get(tuple(sorted((simn[i], simn[j]))), (np.nan, np.nan))
-            B[i, j] = B[j, i] = b; Jm[i, j] = Jm[j, i] = jc
-            rows.append(dict(tool=tool, params=params, sample_a=simn[i], sample_b=simn[j], d_est=Ds[i, j], bc_true=b, jac_true=jc, estimand=est))
+            b, jc, q = truth.get(tuple(sorted((simn[i], simn[j]))), (np.nan, np.nan, np.nan))
+            B[i, j] = B[j, i] = b; Jm[i, j] = Jm[j, i] = jc; Pm[i, j] = Pm[j, i] = q
+            rows.append(dict(tool=tool, params=params, sample_a=simn[i], sample_b=simn[j], d_est=Ds[i, j], bc_true=b, jac_true=jc, jp_true=q, estimand=est))
         base = [s for s in simn if meta[s]["base"] == s]          # exclude depth replicas from structure metrics
         bi = [simn.index(s) for s in base]
         if len(bi) > 3:
             Db, Bb, Jb = Ds[np.ix_(bi, bi)], B[np.ix_(bi, bi)], Jm[np.ix_(bi, bi)]
             row["mantel_bc"], row["mantel_bc_p"] = mantel(Db, np.nan_to_num(Bb))
             row["mantel_jac"], row["mantel_jac_p"] = mantel(Db, np.nan_to_num(Jb))
+            Pb = Pm[np.ix_(bi, bi)]
+            if not np.isnan(Pb[np.triu_indices(len(bi), 1)]).all():
+                np.fill_diagonal(Pb, 0.0); row["mantel_jp"], row["mantel_jp_p"] = mantel(Db, np.nan_to_num(Pb))
             groups = [meta[s]["group"] for s in base]
             try:
                 Z = linkage(squareform(Db, checks=False), "ward"); cl = fcluster(Z, len(set(groups)), "maxclust")
